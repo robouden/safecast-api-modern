@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Modern FastAPI implementation of the Safecast API"
 authors = ["Safecast Team"]
 readme = "README.md"
+packages = [{include = "app"}]
 
 [tool.poetry.dependencies]
 python = "^3.11"
