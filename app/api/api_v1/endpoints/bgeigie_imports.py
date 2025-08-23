@@ -26,6 +26,7 @@ from app.schemas.bgeigie_import import (
 from app.api.deps import get_current_user, get_current_moderator
 from app.models.bgeigie_import import BgeigieImportStatus
 from app.services.bgeigie_processor import BgeigieProcessor
+from app.services.kml_exporter import KMLExporter
 
 router = APIRouter()
 
@@ -135,13 +136,13 @@ async def get_bgeigie_import_stats(db: AsyncSession = Depends(get_db)):
     
     total_query = select(func.count(BgeigieImport.id))
     pending_query = select(func.count(BgeigieImport.id)).where(
-        BgeigieImport.approved == False,
-        BgeigieImport.rejected == False
+        BgeigieImport.status == BgeigieImportStatus.SUBMITTED,
+        BgeigieImport.approved == False
     )
     approved_query = select(func.count(BgeigieImport.id)).where(BgeigieImport.approved == True)
-    rejected_query = select(func.count(BgeigieImport.id)).where(BgeigieImport.rejected == True)
+    rejected_query = select(func.count(BgeigieImport.id)).where(BgeigieImport.status == BgeigieImportStatus.REJECTED)
     unprocessed_query = select(func.count(BgeigieImport.id)).where(
-        BgeigieImport.status == ImportStatus.UNPROCESSED
+        BgeigieImport.status == BgeigieImportStatus.UPLOADED
     )
     
     total = (await db.execute(total_query)).scalar()
@@ -156,6 +157,68 @@ async def get_bgeigie_import_stats(db: AsyncSession = Depends(get_db)):
         approved=approved,
         rejected=rejected,
         unprocessed=unprocessed
+    )
+
+
+@router.get("/{import_id}/kml")
+async def export_bgeigie_import_kml(
+    import_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Export BGeigie import as KML file"""
+    
+    # Get the import with logs
+    query = select(BgeigieImport).options(
+        selectinload(BgeigieImport.logs)
+    ).where(BgeigieImport.id == import_id)
+    
+    result = await db.execute(query)
+    bgeigie_import = result.scalar_one_or_none()
+    
+    if not bgeigie_import:
+        raise HTTPException(status_code=404, detail="BGeigie import not found")
+    
+    # Generate KML content
+    kml_content = KMLExporter.create_kml_from_import(bgeigie_import, bgeigie_import.logs)
+    filename = KMLExporter.get_filename(bgeigie_import, 'kml')
+    
+    from fastapi.responses import Response
+    
+    return Response(
+        content=kml_content,
+        media_type="application/vnd.google-earth.kml+xml",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@router.get("/{import_id}/kmz")
+async def export_bgeigie_import_kmz(
+    import_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Export BGeigie import as KMZ file"""
+    
+    # Get the import with logs
+    query = select(BgeigieImport).options(
+        selectinload(BgeigieImport.logs)
+    ).where(BgeigieImport.id == import_id)
+    
+    result = await db.execute(query)
+    bgeigie_import = result.scalar_one_or_none()
+    
+    if not bgeigie_import:
+        raise HTTPException(status_code=404, detail="BGeigie import not found")
+    
+    # Generate KMZ content
+    kmz_content = KMLExporter.create_kmz_from_import(bgeigie_import, bgeigie_import.logs)
+    filename = KMLExporter.get_filename(bgeigie_import, 'kmz')
+    
+    from fastapi.responses import Response
+    
+    return Response(
+        content=kmz_content,
+        media_type="application/vnd.google-earth.kmz",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
 
