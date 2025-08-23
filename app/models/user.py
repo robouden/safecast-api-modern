@@ -43,6 +43,7 @@ class User(Base):
     measurements = relationship("Measurement", foreign_keys="Measurement.user_id", back_populates="user")
     devices = relationship("Device", back_populates="user")
     bgeigie_imports = relationship("BgeigieImport", back_populates="user")
+    device_story_comments = relationship("DeviceStoryComment", back_populates="user")
 
     def __repr__(self):
         return f"<User(email='{self.email}', name='{self.name}')>"

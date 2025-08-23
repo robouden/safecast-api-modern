@@ -24,6 +24,7 @@ from app.schemas.bgeigie_import import (
     FileUploadResponse
 )
 from app.api.deps import get_current_user, get_current_moderator
+from app.models.bgeigie_import import BgeigieImportStatus
 from app.services.bgeigie_processor import BgeigieProcessor
 
 router = APIRouter()
@@ -399,14 +400,254 @@ async def get_bgeigie_logs(
     return [log.to_dict() for log in logs]
 
 
-@router.delete("/{import_id}", status_code=204)
+# Moderator status views
+@router.get("/not_approved", response_model=BgeigieImportList)
+async def get_not_approved_imports(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    current_moderator: User = Depends(get_current_moderator),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get BGeigie imports that are submitted but not approved (moderator only)"""
+    
+    query = select(BgeigieImport).options(
+        selectinload(BgeigieImport.user)
+    ).where(
+        BgeigieImport.status == BgeigieImportStatus.SUBMITTED,
+        BgeigieImport.approved == False
+    )
+    
+    # Get total count
+    count_query = select(func.count()).where(
+        BgeigieImport.status == BgeigieImportStatus.SUBMITTED,
+        BgeigieImport.approved == False
+    )
+    total_result = await db.execute(count_query)
+    total = total_result.scalar()
+    
+    # Apply pagination
+    offset = (page - 1) * per_page
+    query = query.offset(offset).limit(per_page).order_by(BgeigieImport.created_at.desc())
+    
+    result = await db.execute(query)
+    imports = result.scalars().all()
+    
+    return BgeigieImportList(
+        items=[BgeigieImportResponse.from_orm(imp) for imp in imports],
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=math.ceil(total / per_page)
+    )
+
+
+@router.get("/not_processed", response_model=BgeigieImportList)
+async def get_not_processed_imports(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    current_moderator: User = Depends(get_current_moderator),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get BGeigie imports that are not yet processed (moderator only)"""
+    
+    query = select(BgeigieImport).options(
+        selectinload(BgeigieImport.user)
+    ).where(
+        BgeigieImport.status == BgeigieImportStatus.UPLOADED
+    )
+    
+    # Get total count
+    count_query = select(func.count()).where(
+        BgeigieImport.status == BgeigieImportStatus.UPLOADED
+    )
+    total_result = await db.execute(count_query)
+    total = total_result.scalar()
+    
+    # Apply pagination
+    offset = (page - 1) * per_page
+    query = query.offset(offset).limit(per_page).order_by(BgeigieImport.created_at.desc())
+    
+    result = await db.execute(query)
+    imports = result.scalars().all()
+    
+    return BgeigieImportList(
+        items=[BgeigieImportResponse.from_orm(imp) for imp in imports],
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=math.ceil(total / per_page)
+    )
+
+
+@router.get("/awaiting_response", response_model=BgeigieImportList)
+async def get_awaiting_response_imports(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    current_moderator: User = Depends(get_current_moderator),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get BGeigie imports awaiting user response (moderator only)"""
+    
+    query = select(BgeigieImport).options(
+        selectinload(BgeigieImport.user)
+    ).where(
+        BgeigieImport.status == BgeigieImportStatus.AWAITING_RESPONSE
+    )
+    
+    # Get total count
+    count_query = select(func.count()).where(
+        BgeigieImport.status == BgeigieImportStatus.AWAITING_RESPONSE
+    )
+    total_result = await db.execute(count_query)
+    total = total_result.scalar()
+    
+    # Apply pagination
+    offset = (page - 1) * per_page
+    query = query.offset(offset).limit(per_page).order_by(BgeigieImport.created_at.desc())
+    
+    result = await db.execute(query)
+    imports = result.scalars().all()
+    
+    return BgeigieImportList(
+        items=[BgeigieImportResponse.from_orm(imp) for imp in imports],
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=math.ceil(total / per_page)
+    )
+
+
+@router.get("/auto_approved", response_model=BgeigieImportList)
+async def get_auto_approved_imports(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    current_moderator: User = Depends(get_current_moderator),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get auto-approved BGeigie imports (moderator only)"""
+    
+    query = select(BgeigieImport).options(
+        selectinload(BgeigieImport.user)
+    ).where(
+        BgeigieImport.approved == True,
+        BgeigieImport.auto_approved == True
+    )
+    
+    # Get total count
+    count_query = select(func.count()).where(
+        BgeigieImport.approved == True,
+        BgeigieImport.auto_approved == True
+    )
+    total_result = await db.execute(count_query)
+    total = total_result.scalar()
+    
+    # Apply pagination
+    offset = (page - 1) * per_page
+    query = query.offset(offset).limit(per_page).order_by(BgeigieImport.created_at.desc())
+    
+    result = await db.execute(query)
+    imports = result.scalars().all()
+    
+    return BgeigieImportList(
+        items=[BgeigieImportResponse.from_orm(imp) for imp in imports],
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=math.ceil(total / per_page)
+    )
+
+
+@router.get("/not_submitted", response_model=BgeigieImportList)
+async def get_not_submitted_imports(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    current_moderator: User = Depends(get_current_moderator),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get BGeigie imports that are not submitted (moderator only)"""
+    
+    query = select(BgeigieImport).options(
+        selectinload(BgeigieImport.user)
+    ).where(
+        BgeigieImport.status.in_([
+            BgeigieImportStatus.UPLOADED,
+            BgeigieImportStatus.PROCESSED
+        ])
+    )
+    
+    # Get total count
+    count_query = select(func.count()).where(
+        BgeigieImport.status.in_([
+            BgeigieImportStatus.UPLOADED,
+            BgeigieImportStatus.PROCESSED
+        ])
+    )
+    total_result = await db.execute(count_query)
+    total = total_result.scalar()
+    
+    # Apply pagination
+    offset = (page - 1) * per_page
+    query = query.offset(offset).limit(per_page).order_by(BgeigieImport.created_at.desc())
+    
+    result = await db.execute(query)
+    imports = result.scalars().all()
+    
+    return BgeigieImportList(
+        items=[BgeigieImportResponse.from_orm(imp) for imp in imports],
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=math.ceil(total / per_page)
+    )
+
+
+@router.get("/rejected_import", response_model=BgeigieImportList)
+async def get_rejected_imports(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    current_moderator: User = Depends(get_current_moderator),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get rejected BGeigie imports (moderator only)"""
+    
+    query = select(BgeigieImport).options(
+        selectinload(BgeigieImport.user)
+    ).where(
+        BgeigieImport.status == BgeigieImportStatus.REJECTED
+    )
+    
+    # Get total count
+    count_query = select(func.count()).where(
+        BgeigieImport.status == BgeigieImportStatus.REJECTED
+    )
+    total_result = await db.execute(count_query)
+    total = total_result.scalar()
+    
+    # Apply pagination
+    offset = (page - 1) * per_page
+    query = query.offset(offset).limit(per_page).order_by(BgeigieImport.created_at.desc())
+    
+    result = await db.execute(query)
+    imports = result.scalars().all()
+    
+    return BgeigieImportList(
+        items=[BgeigieImportResponse.from_orm(imp) for imp in imports],
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=math.ceil(total / per_page)
+    )
+
+
+@router.delete("/{import_id}")
 async def delete_bgeigie_import(
     import_id: int,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Delete a BGeigie import"""
+    """Delete a BGeigie import (only by owner or moderator)"""
     
+    # Get the import
     query = select(BgeigieImport).where(BgeigieImport.id == import_id)
     result = await db.execute(query)
     bgeigie_import = result.scalar_one_or_none()
@@ -414,15 +655,10 @@ async def delete_bgeigie_import(
     if not bgeigie_import:
         raise HTTPException(status_code=404, detail="BGeigie import not found")
     
+    # Check permissions (owner or moderator)
     if bgeigie_import.user_id != current_user.id and not current_user.is_moderator:
         raise HTTPException(status_code=403, detail="Not authorized to delete this import")
     
-    # Delete associated file
-    if bgeigie_import.source and os.path.exists(bgeigie_import.source):
-        try:
-            os.remove(bgeigie_import.source)
-        except Exception:
-            pass  # File deletion failure shouldn't prevent DB deletion
-    
+    # Delete the import (cascade will handle logs)
     await db.delete(bgeigie_import)
     await db.commit()
