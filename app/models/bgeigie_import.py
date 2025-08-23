@@ -47,6 +47,7 @@ class MeasurementImport(Base):
     # Relationships
     user = relationship("User", back_populates="bgeigie_imports")
     measurements = relationship("Measurement", back_populates="measurement_import")
+    bgeigie_logs = relationship("BgeigieLog", back_populates="bgeigie_import", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<MeasurementImport(id={self.id}, name='{self.name}', status='{self.status}')>"

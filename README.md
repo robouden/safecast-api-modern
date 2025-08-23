@@ -29,12 +29,18 @@ A modernized version of the Safecast API built with FastAPI, maintaining compati
 
 ## Quick Start
 
+### Local Development (Recommended)
+
 ```bash
 # Install dependencies
 poetry install
 
-# Start database
-docker-compose up -d postgres
+# Setup PostgreSQL with PostGIS (see SETUP.md for details)
+# Create database: safecast_modern
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your database settings
 
 # Run migrations
 alembic upgrade head
@@ -42,6 +48,16 @@ alembic upgrade head
 # Start development server
 poetry run uvicorn app.main:app --reload
 ```
+
+### Docker (Optional)
+
+```bash
+# If you prefer Docker
+docker-compose up -d postgres
+poetry run uvicorn app.main:app --reload
+```
+
+For detailed setup instructions, see [SETUP.md](SETUP.md).
 
 ## API Compatibility
 
