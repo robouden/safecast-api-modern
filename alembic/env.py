@@ -63,8 +63,17 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
+    # Get the database URL and convert async to sync for migrations
+    configuration = config.get_section(config.config_ini_section, {})
+    
+    # Convert asyncpg URL to psycopg2 for synchronous migrations
+    if "postgresql+asyncpg://" in str(configuration.get("sqlalchemy.url", "")):
+        configuration["sqlalchemy.url"] = configuration["sqlalchemy.url"].replace(
+            "postgresql+asyncpg://", "postgresql+psycopg2://"
+        )
+    
     connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
