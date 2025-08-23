@@ -83,10 +83,15 @@ install_system_deps() {
     case $OS in
         "ubuntu")
             sudo apt update
+            
+            # Detect PostgreSQL version and install appropriate PostGIS
+            PG_VERSION=$(apt-cache policy postgresql | grep Candidate | cut -d: -f2 | cut -d+ -f1 | xargs)
+            POSTGIS_PACKAGE="postgresql-${PG_VERSION}-postgis-3"
+            
             sudo apt install -y \
                 python3 python3-pip python3-venv python3-dev \
                 postgresql postgresql-contrib postgresql-client \
-                postgresql-14-postgis-3 \
+                ${POSTGIS_PACKAGE} \
                 build-essential libpq-dev \
                 curl wget git \
                 redis-server \

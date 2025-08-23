@@ -167,7 +167,22 @@ class DatabaseSetup:
         
         packages = []
         if pkg_manager.manager == 'apt':
-            packages = ['postgresql', 'postgresql-contrib', 'postgresql-14-postgis-3']
+            # Detect PostgreSQL version dynamically
+            try:
+                result = subprocess.run(['apt-cache', 'policy', 'postgresql'], 
+                                      capture_output=True, text=True, check=True)
+                for line in result.stdout.split('\n'):
+                    if 'Candidate:' in line:
+                        pg_version = line.split(':')[1].split('+')[0].strip()
+                        break
+                else:
+                    pg_version = '16'  # Default fallback
+                
+                postgis_package = f'postgresql-{pg_version}-postgis-3'
+                packages = ['postgresql', 'postgresql-contrib', postgis_package]
+            except subprocess.CalledProcessError:
+                # Fallback to generic PostGIS metapackage
+                packages = ['postgresql', 'postgresql-contrib', 'postgresql-postgis']
         elif pkg_manager.manager == 'brew':
             packages = ['postgresql', 'postgis']
         elif pkg_manager.manager in ['yum', 'dnf']:
