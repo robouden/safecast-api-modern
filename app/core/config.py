@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str = "INFO"
     
+    # Elasticsearch (for ingest data)
+    ELASTICSEARCH_URL: str = "http://localhost:9200"
+    
     # Pagination
     DEFAULT_PAGE_SIZE: int = 100
     MAX_PAGE_SIZE: int = 1000

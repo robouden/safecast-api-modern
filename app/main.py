@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.core.database import init_db
+from app.core.elasticsearch import es_client
 from app.api.api_v1.api import api_router
 
 
@@ -11,9 +12,10 @@ from app.api.api_v1.api import api_router
 async def lifespan(app: FastAPI):
     # Startup
     await init_db()
+    await es_client.create_ingest_template()
     yield
     # Shutdown
-    pass
+    await es_client.close()
 
 
 app = FastAPI(

@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.api_v1.endpoints import measurements, users, devices, bgeigie_imports, auth
+from app.api.api_v1.endpoints import measurements, users, devices, bgeigie_imports, auth, ingest
 
 api_router = APIRouter()
 
@@ -10,6 +10,7 @@ api_router.include_router(measurements.router, prefix="/measurements", tags=["me
 api_router.include_router(users.router, prefix="/users", tags=["users"])
 api_router.include_router(devices.router, prefix="/devices", tags=["devices"])
 api_router.include_router(bgeigie_imports.router, prefix="/bgeigie_imports", tags=["bgeigie_imports"])
+api_router.include_router(ingest.router, prefix="/ingest", tags=["ingest"])
 
 # Legacy compatibility routes
 api_router.include_router(measurements.router, prefix="", tags=["measurements"])  # For /measurements endpoint

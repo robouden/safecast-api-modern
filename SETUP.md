@@ -31,8 +31,13 @@ brew install postgresql postgis
 brew services start postgresql
 ```
 
-### 3. Setup Database
+### 3. Setup Dual Database Architecture
 
+The modernized API uses two databases:
+- **PostgreSQL** - Main API data (users, devices, measurements, bgeigie_imports)
+- **Elasticsearch** - Real-time ingest data (device streams, air quality, radiation)
+
+**PostgreSQL Setup:**
 ```bash
 # Connect to PostgreSQL
 sudo -u postgres psql
@@ -51,6 +56,21 @@ CREATE EXTENSION IF NOT EXISTS postgis_topology;
 
 # Exit psql
 \q
+```
+
+**Elasticsearch Setup:**
+```bash
+# Ubuntu/Debian
+wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo apt-key add -
+echo "deb https://artifacts.elastic.co/packages/8.x/apt stable main" | sudo tee /etc/apt/sources.list.d/elastic-8.x.list
+sudo apt update && sudo apt install elasticsearch
+
+# macOS
+brew install elasticsearch
+
+# Start Elasticsearch
+sudo systemctl start elasticsearch  # Linux
+brew services start elasticsearch   # macOS
 ```
 
 ### 4. Install Python Dependencies
