@@ -20,9 +20,7 @@ class BgeigieProcessor:
     # BGeigie log format patterns
     BGEIGIE_HEADER_PATTERN = re.compile(r'^# NEW LOG')
     BGEIGIE_DATA_PATTERN = re.compile(
-        r'^\$BNRDD,(\d+),(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z),(\d+),(\d+),(\d+),'
-        r'([NSEW\d\.\-]+),([NSEW\d\.\-]+),([AVD]),(\d+\.?\d*),([NSEW]),(\d+\.?\d*),([NSEW]),'
-        r'(\d+\.?\d*),([NSEW]),(\d+\.?\d*),([NSEW]),(\d+\.?\d*),(\d+\.?\d*),(\d+\.?\d*)'
+        r'^\$BNRDD,(\d+),(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z),(.+)'
     )
     
     def __init__(self, db: AsyncSession):
@@ -85,33 +83,90 @@ class BgeigieProcessor:
             return None
         
         try:
-            groups = match.groups()
+            device_serial_id, timestamp_str, rest = match.groups()
+            parts = rest.split(',')
             
             # Parse timestamp
-            timestamp_str = groups[1]
             captured_at = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
             
-            # Parse location
-            lat_raw, lng_raw = groups[5], groups[6]
-            gps_validity = groups[7]
+            # Initialize default values
+            cpm = cpm2 = total_count = None
+            latitude = longitude = altitude = None
+            gps_validity = 'V'  # Invalid by default
+            temperature = humidity = pressure = battery_voltage = None
             
-            latitude = self._parse_coordinate(lat_raw, groups[9])
-            longitude = self._parse_coordinate(lng_raw, groups[11])
-            altitude = float(groups[12]) if groups[12] else None
-            
-            # Parse sensor data
-            cpm = float(groups[2]) if groups[2] else None
-            cpm2 = float(groups[3]) if groups[3] else None
-            total_count = int(groups[4]) if groups[4] else None
-            
-            # Additional sensor data (if available)
-            temperature = float(groups[16]) if len(groups) > 16 and groups[16] else None
-            humidity = float(groups[17]) if len(groups) > 17 and groups[17] else None
-            pressure = float(groups[18]) if len(groups) > 18 and groups[18] else None
-            battery_voltage = float(groups[15]) if groups[15] else None
+            # Parse based on number of parts - bGeigie logs have variable formats
+            if len(parts) >= 6:
+                # Try to parse CPM values (can be at different positions)
+                try:
+                    # Look for numeric values that could be CPM
+                    for i, part in enumerate(parts[:5]):
+                        if part.replace('.', '').isdigit() and float(part) > 0:
+                            if cpm is None:
+                                cpm = float(part)
+                            elif cpm2 is None and float(part) != cpm:
+                                cpm2 = float(part)
+                            elif total_count is None:
+                                total_count = int(float(part))
+                except (ValueError, IndexError):
+                    pass
+                
+                # Parse GPS data - look for coordinate patterns
+                for i in range(len(parts) - 1):
+                    try:
+                        # Look for latitude/longitude pairs
+                        if (i < len(parts) - 3 and 
+                            parts[i+1] in ['N', 'S'] and 
+                            parts[i+3] in ['E', 'W']):
+                            # NMEA format: value, direction, value, direction
+                            latitude = self._parse_coordinate(parts[i], parts[i+1])
+                            longitude = self._parse_coordinate(parts[i+2], parts[i+3])
+                            if i+4 < len(parts):
+                                try:
+                                    altitude = float(parts[i+4])
+                                except ValueError:
+                                    pass
+                            if i+5 < len(parts):
+                                gps_validity = parts[i+5] if parts[i+5] in ['A', 'V'] else 'V'
+                            break
+                        elif (i < len(parts) - 1 and 
+                              self._is_decimal_coordinate(parts[i]) and 
+                              self._is_decimal_coordinate(parts[i+1])):
+                            # Decimal degrees format
+                            latitude = float(parts[i])
+                            longitude = float(parts[i+1])
+                            if i+2 < len(parts):
+                                try:
+                                    altitude = float(parts[i+2])
+                                except ValueError:
+                                    pass
+                            gps_validity = 'A'  # Assume valid if we have decimal coordinates
+                            break
+                    except (ValueError, IndexError):
+                        continue
+                
+                # Parse additional sensor data from end of line
+                try:
+                    # Look for temperature, humidity, pressure in last few fields
+                    if len(parts) >= 3:
+                        # Try to parse last few numeric values as sensor data
+                        for i in range(max(0, len(parts) - 5), len(parts)):
+                            part = parts[i].replace('*', '').split('*')[0]  # Remove checksum
+                            if self._is_float(part):
+                                val = float(part)
+                                if 0 <= val <= 100 and temperature is None:  # Likely temperature
+                                    temperature = val
+                                elif 0 <= val <= 100 and humidity is None:  # Likely humidity
+                                    humidity = val
+                                elif 900 <= val <= 1100 and pressure is None:  # Likely pressure
+                                    pressure = val
+                                elif 0 <= val <= 20 and battery_voltage is None:  # Likely battery
+                                    battery_voltage = val
+                except (ValueError, IndexError):
+                    pass
             
             return {
-                'device_serial_id': groups[0],
+                'device_serial_id': device_serial_id,
                 'captured_at': captured_at,
                 'cpm': cpm,
                 'cpm2': cpm2,
@@ -139,6 +194,12 @@ class BgeigieProcessor:
             # Handle decimal degrees format
             coord = float(coord_str)
             
+            # Convert NMEA format (DDMM.MMMM) to decimal degrees if needed
+            if coord > 180:  # Likely NMEA format
+                degrees = int(coord / 100)
+                minutes = coord - (degrees * 100)
+                coord = degrees + (minutes / 60)
+            
             # Apply direction
             if direction in ['S', 'W']:
                 coord = -coord
@@ -146,6 +207,22 @@ class BgeigieProcessor:
             return coord
         except (ValueError, TypeError):
             return None
+
+    def _is_decimal_coordinate(self, value: str) -> bool:
+        """Check if value looks like a decimal coordinate"""
+        try:
+            coord = float(value)
+            return -180 <= coord <= 180
+        except (ValueError, TypeError):
+            return False
+
+    def _is_float(self, value: str) -> bool:
+        """Check if value can be converted to float"""
+        try:
+            float(value)
+            return True
+        except (ValueError, TypeError):
+            return False
 
     async def _create_bgeigie_log(self, bgeigie_import: BgeigieImport, log_data: Dict) -> Optional[BgeigieLog]:
         """Create a BgeigieLog entry from parsed data"""

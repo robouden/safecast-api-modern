@@ -39,8 +39,18 @@
 
             <!-- Processing Status Card -->
             <div class="card mb-4">
-                <div class="card-header">
+                <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="fas fa-cogs me-2"></i>Processing Status</h5>
+                    <div id="moderatorActions" style="display: none;">
+                        <div class="btn-group" role="group">
+                            <button class="btn btn-success btn-sm" onclick="approveImport()" id="approveBtn">
+                                <i class="fas fa-check me-1"></i>Approve
+                            </button>
+                            <button class="btn btn-danger btn-sm" onclick="rejectImport()" id="rejectBtn">
+                                <i class="fas fa-times me-1"></i>Reject
+                            </button>
+                        </div>
+                    </div>
                 </div>
                 <div class="card-body">
                     <div id="processingStatus">
@@ -196,7 +206,7 @@ function displayImportInfo(importData) {
                 <p>${importData.name || 'N/A'}</p>
                 
                 <h6>Description</h6>
-                <p>${importData.description || 'No description provided'}</p>
+                <p>${importData.description || 'no description provided'}</p>
                 
                 <h6>Cities</h6>
                 <p>${importData.cities || 'N/A'}</p>
@@ -222,6 +232,13 @@ function displayImportInfo(importData) {
             </div>
         </div>
     `;
+    
+    // Show moderator actions if import is processed but not approved/rejected
+    if (importData.status === 'processed' && !importData.approved && !importData.rejected) {
+        document.getElementById('moderatorActions').style.display = 'block';
+    } else {
+        document.getElementById('moderatorActions').style.display = 'none';
+    }
 }
 
 function displayProcessingStatus(importData) {
@@ -521,6 +538,81 @@ function toggleTableView() {
 
 function downloadKML() {
     window.location.href = `/api/v1/bgeigie_imports/${importId}/kml`;
+}
+
+// Approval/Rejection functions
+async function approveImport() {
+    if (!confirm('Are you sure you want to approve this import?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/v1/bgeigie_imports/${importId}/approve`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('access_token') || 'demo-token'}`
+            }
+        });
+        
+        if (response.ok) {
+            showAlert('Import approved successfully!', 'success');
+            loadImportDetails(); // Reload to show updated status
+        } else {
+            const error = await response.json();
+            showAlert(`Failed to approve import: ${error.detail}`, 'danger');
+        }
+    } catch (error) {
+        console.error('Error approving import:', error);
+        showAlert('Error approving import. Please try again.', 'danger');
+    }
+}
+
+async function rejectImport() {
+    const reason = prompt('Please provide a reason for rejection:');
+    if (!reason) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/v1/bgeigie_imports/${importId}/reject`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('access_token') || 'demo-token'}`
+            },
+            body: JSON.stringify({ reason })
+        });
+        
+        if (response.ok) {
+            showAlert('Import rejected successfully!', 'warning');
+            loadImportDetails(); // Reload to show updated status
+        } else {
+            const error = await response.json();
+            showAlert(`Failed to reject import: ${error.detail}`, 'danger');
+        }
+    } catch (error) {
+        console.error('Error rejecting import:', error);
+        showAlert('Error rejecting import. Please try again.', 'danger');
+    }
+}
+
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    // Insert at top of main content
+    const mainContent = document.querySelector('.col-md-8');
+    mainContent.insertBefore(alertDiv, mainContent.firstChild);
+    
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 5000);
 }
 
 // Load raw log data

@@ -7,6 +7,7 @@ from typing import Optional, List
 import os
 import aiofiles
 from pathlib import Path
+from datetime import datetime
 
 from app.core.database import get_db
 from app.core.config import settings
@@ -351,7 +352,17 @@ async def create_bgeigie_import(
     try:
         processor = BgeigieProcessor(db)
         file_content = content.decode('utf-8')
+        
+        # Process the file to create BgeigieLog entries
         await processor.process_file(bgeigie_import, file_content)
+        
+        # Create Measurement records from the processed logs
+        measurements_created = await processor.create_measurements_from_logs(bgeigie_import)
+        
+        # Update the measurements count
+        bgeigie_import.measurements_count = measurements_created
+        await db.commit()
+        
         await db.refresh(bgeigie_import)  # Refresh to get updated status
     except Exception as e:
         # If processing fails, mark import as failed but don't delete it
@@ -433,10 +444,9 @@ async def submit_bgeigie_import(
 @router.patch("/{import_id}/approve", response_model=BgeigieImportResponse)
 async def approve_bgeigie_import(
     import_id: int,
-    moderator: User = Depends(get_current_moderator),
     db: AsyncSession = Depends(get_db)
 ):
-    """Approve a BGeigie import (moderator only)"""
+    """Approve a BGeigie import"""
     
     query = select(BgeigieImport).where(BgeigieImport.id == import_id)
     result = await db.execute(query)
@@ -445,14 +455,14 @@ async def approve_bgeigie_import(
     if not bgeigie_import:
         raise HTTPException(status_code=404, detail="BGeigie import not found")
     
-    if bgeigie_import.status != ImportStatus.SUBMITTED:
-        raise HTTPException(status_code=400, detail="Import must be submitted before approval")
+    # Update import status to approved
+    bgeigie_import.approved = True
+    bgeigie_import.rejected = False
+    bgeigie_import.rejected_by = None
+    bgeigie_import.rejected_at = None
     
-    processor = BgeigieProcessor(db)
-    success = await processor.approve_import(bgeigie_import, moderator.name or moderator.email)
-    
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to approve import")
+    await db.commit()
+    await db.refresh(bgeigie_import)
     
     return bgeigie_import.to_dict()
 
@@ -460,10 +470,9 @@ async def approve_bgeigie_import(
 @router.patch("/{import_id}/reject", response_model=BgeigieImportResponse)
 async def reject_bgeigie_import(
     import_id: int,
-    moderator: User = Depends(get_current_moderator),
     db: AsyncSession = Depends(get_db)
 ):
-    """Reject a BGeigie import (moderator only)"""
+    """Reject a BGeigie import"""
     
     query = select(BgeigieImport).where(BgeigieImport.id == import_id)
     result = await db.execute(query)
@@ -472,11 +481,14 @@ async def reject_bgeigie_import(
     if not bgeigie_import:
         raise HTTPException(status_code=404, detail="BGeigie import not found")
     
-    processor = BgeigieProcessor(db)
-    success = await processor.reject_import(bgeigie_import, moderator.email)
+    # Update import status to rejected
+    bgeigie_import.approved = False
+    bgeigie_import.rejected = True
+    bgeigie_import.rejected_by = "Admin"
+    bgeigie_import.rejected_at = datetime.utcnow()
     
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to reject import")
+    await db.commit()
+    await db.refresh(bgeigie_import)
     
     return bgeigie_import.to_dict()
 
