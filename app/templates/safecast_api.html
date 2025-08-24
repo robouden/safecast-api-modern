@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+
+{% block title %}Safecast API - Safecast API{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1>The Safecast API</h1>
+        <p class="lead">Query and add to the Safecast dataset with your own application.</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-code me-2"></i>API Endpoint
+                </h5>
+            </div>
+            <div class="card-body">
+                <p>The Safecast API is available at:</p>
+                <div class="bg-light p-3 rounded">
+                    <code>https://api.safecast.org/</code>
+                </div>
+                <p class="mt-3">All API requests should be made to this base URL with the appropriate endpoint path.</p>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-list me-2"></i>Available Resources
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-users me-2 text-primary"></i>Users</h6>
+                        <ul class="list-unstyled small mb-3">
+                            <li><code>GET /api/v1/users</code> - List users</li>
+                            <li><code>GET /api/v1/users/{id}</code> - Get user details</li>
+                            <li><code>POST /api/v1/users</code> - Create user</li>
+                        </ul>
+
+                        <h6><i class="fas fa-chart-line me-2 text-success"></i>Measurements</h6>
+                        <ul class="list-unstyled small mb-3">
+                            <li><code>GET /api/v1/measurements</code> - List measurements</li>
+                            <li><code>GET /api/v1/measurements/{id}</code> - Get measurement</li>
+                            <li><code>POST /api/v1/measurements</code> - Submit measurement</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-upload me-2 text-info"></i>bGeigie Imports</h6>
+                        <ul class="list-unstyled small mb-3">
+                            <li><code>GET /api/v1/bgeigie_imports</code> - List imports</li>
+                            <li><code>GET /api/v1/bgeigie_imports/{id}</code> - Get import</li>
+                            <li><code>POST /api/v1/bgeigie_imports</code> - Upload log</li>
+                        </ul>
+
+                        <h6><i class="fas fa-microchip me-2 text-warning"></i>Devices</h6>
+                        <ul class="list-unstyled small mb-3">
+                            <li><code>GET /api/v1/devices</code> - List devices</li>
+                            <li><code>GET /api/v1/devices/{id}</code> - Get device</li>
+                            <li><code>POST /api/v1/devices</code> - Register device</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-cog me-2"></i>Using the API
+                </h5>
+            </div>
+            <div class="card-body">
+                <h6>Authentication</h6>
+                <p>Most API endpoints require authentication using an API key. Include your API key in the request headers:</p>
+                <div class="bg-light p-3 rounded mb-3">
+                    <code>Authorization: Bearer YOUR_API_KEY</code>
+                </div>
+
+                <h6>Request Format</h6>
+                <p>The API accepts and returns JSON data. Set the appropriate content type:</p>
+                <div class="bg-light p-3 rounded mb-3">
+                    <code>Content-Type: application/json</code>
+                </div>
+
+                <h6>Example Request</h6>
+                <div class="bg-dark text-light p-3 rounded">
+                    <pre><code>curl -X GET "https://api.safecast.org/api/v1/measurements" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json"</code></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="card-title mb-0">
+                    <i class="fas fa-key me-2"></i>Get Your API Key
+                </h6>
+            </div>
+            <div class="card-body">
+                <p class="small">You need an API key to access most endpoints.</p>
+                <a href="/api-key" class="btn btn-safecast btn-sm w-100">
+                    <i class="fas fa-key me-2"></i>Get API Key
+                </a>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="card-title mb-0">
+                    <i class="fas fa-book-open me-2"></i>Documentation
+                </h6>
+            </div>
+            <div class="card-body">
+                <p class="small">Interactive API documentation with examples.</p>
+                <a href="/docs" class="btn btn-outline-primary btn-sm w-100">
+                    <i class="fas fa-external-link-alt me-2"></i>View Docs
+                </a>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="card-title mb-0">
+                    <i class="fas fa-download me-2"></i>Rate Limits
+                </h6>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled small mb-0">
+                    <li><strong>Authenticated:</strong> 1000 req/hour</li>
+                    <li><strong>Anonymous:</strong> 100 req/hour</li>
+                    <li><strong>Bulk uploads:</strong> 10 req/minute</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h6 class="card-title mb-0">
+                    <i class="fas fa-question-circle me-2"></i>Support
+                </h6>
+            </div>
+            <div class="card-body">
+                <p class="small">Need help with the API?</p>
+                <a href="/contact" class="btn btn-outline-secondary btn-sm w-100">
+                    <i class="fas fa-envelope me-2"></i>Contact Support
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,566 @@
+{% extends "base.html" %}
+
+{% block title %}bGeigie Import Details{% endblock %}
+
+{% block extra_head %}
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1><i class="fas fa-file-import me-2"></i>bGeigie Import Details</h1>
+                <div>
+                    <a href="/bgeigie-imports" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left me-1"></i>Back to Imports
+                    </a>
+                </div>
+            </div>
+
+            <!-- Import Info Card -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Import Information</h5>
+                </div>
+                <div class="card-body">
+                    <div id="importInfo">
+                        <div class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading import details...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Processing Status Card -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-cogs me-2"></i>Processing Status</h5>
+                </div>
+                <div class="card-body">
+                    <div id="processingStatus">
+                        <div class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading processing status...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Map Visualization Card -->
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-map me-2"></i>Measurement Map</h5>
+                    <div>
+                        <button class="btn btn-sm btn-outline-success" onclick="downloadKML()">
+                            <i class="fas fa-download me-1"></i>Download KML
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="mapContainer" style="height: 400px; width: 100%;">
+                        <div class="text-center mt-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading map...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Measurements Table Card -->
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i>Measurements Data</h5>
+                    <div>
+                        <button class="btn btn-sm btn-outline-primary" onclick="toggleTableView()">
+                            <i class="fas fa-table me-1"></i><span id="tableToggleText">Show Table</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="measurementsSummary">
+                        <div class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading measurements summary...</p>
+                        </div>
+                    </div>
+                    <div id="measurementsTable" style="display: none;">
+                        <!-- Table will be populated here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Raw Log Data Card -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-file-alt me-2"></i>Raw Log Data</h5>
+                </div>
+                <div class="card-body">
+                    <div id="rawLogData">
+                        <div class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading raw log data...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const importId = "{{ import_id }}";
+
+// Load import details
+async function loadImportDetails() {
+    try {
+        console.log('Loading import details for ID:', importId);
+        const response = await fetch(`/api/v1/bgeigie_imports/${importId}`);
+        console.log('Response status:', response.status);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const importData = await response.json();
+        console.log('Import data received:', importData);
+        displayImportInfo(importData);
+        displayProcessingStatus(importData);
+        
+    } catch (error) {
+        console.error('Error loading import details:', error);
+        document.getElementById('importInfo').innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Failed to load import details: ${error.message}
+            </div>
+        `;
+    }
+}
+
+// Load measurements
+async function loadMeasurements() {
+    try {
+        const response = await fetch(`/api/v1/bgeigie_imports/${importId}/measurements`);
+        if (!response.ok) {
+            throw new Error('Failed to load measurements');
+        }
+        
+        const measurements = await response.json();
+        displayMeasurementsSummary(measurements);
+        displayMeasurementsTable(measurements);
+        initializeMap(measurements);
+        
+    } catch (error) {
+        console.error('Error loading measurements:', error);
+        document.getElementById('measurementsSummary').innerHTML = `
+            <div class="alert alert-warning">
+                <i class="fas fa-info-circle me-2"></i>
+                No measurements available or failed to load measurements.
+            </div>
+        `;
+        document.getElementById('mapContainer').innerHTML = `
+            <div class="alert alert-info text-center mt-5">
+                <i class="fas fa-info-circle me-2"></i>
+                No measurement data available to display on map.
+            </div>
+        `;
+    }
+}
+
+function displayImportInfo(importData) {
+    const statusBadge = getStatusBadge(importData.status);
+    const approvalBadge = importData.approved ? 
+        '<span class="badge bg-success ms-2">Approved</span>' : 
+        importData.rejected ? 
+        '<span class="badge bg-danger ms-2">Rejected</span>' : 
+        '<span class="badge bg-warning ms-2">Pending</span>';
+
+    document.getElementById('importInfo').innerHTML = `
+        <div class="row">
+            <div class="col-md-6">
+                <h6>Name</h6>
+                <p>${importData.name || 'N/A'}</p>
+                
+                <h6>Description</h6>
+                <p>${importData.description || 'No description provided'}</p>
+                
+                <h6>Cities</h6>
+                <p>${importData.cities || 'N/A'}</p>
+                
+                <h6>Credits</h6>
+                <p>${importData.credits || 'N/A'}</p>
+            </div>
+            <div class="col-md-6">
+                <h6>Status</h6>
+                <p>${statusBadge}${approvalBadge}</p>
+                
+                <h6>Uploaded</h6>
+                <p>${new Date(importData.created_at).toLocaleString()}</p>
+                
+                <h6>Height</h6>
+                <p>${importData.height || 'N/A'}</p>
+                
+                <h6>Orientation</h6>
+                <p>${importData.orientation || 'N/A'}</p>
+                
+                <h6>Subtype</h6>
+                <p>${importData.subtype || 'None'}</p>
+            </div>
+        </div>
+    `;
+}
+
+function displayProcessingStatus(importData) {
+    const progressWidth = importData.status === 'processed' ? '100%' : 
+                         importData.status === 'processing' ? '50%' : '10%';
+    const progressClass = importData.status === 'processed' ? 'bg-success' : 
+                         importData.status === 'processing' ? 'bg-warning' : 'bg-info';
+
+    document.getElementById('processingStatus').innerHTML = `
+        <div class="row">
+            <div class="col-md-8">
+                <h6>Processing Progress</h6>
+                <div class="progress mb-3">
+                    <div class="progress-bar ${progressClass}" role="progressbar" 
+                         style="width: ${progressWidth}" aria-valuenow="75" aria-valuemin="0" aria-valuemax="100">
+                        ${importData.status}
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="row text-center">
+                    <div class="col-6">
+                        <h6>Lines Processed</h6>
+                        <span class="badge bg-primary fs-6">${importData.lines_count || 0}</span>
+                    </div>
+                    <div class="col-6">
+                        <h6>Measurements</h6>
+                        <span class="badge bg-success fs-6">${importData.measurements_count || 0}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function displayMeasurementsSummary(measurements) {
+    if (!measurements || measurements.length === 0) {
+        document.getElementById('measurementsSummary').innerHTML = `
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                No measurements found for this import.
+            </div>
+        `;
+        return;
+    }
+
+    // Calculate statistics
+    const validMeasurements = measurements.filter(m => m.cpm !== null && m.cpm !== undefined);
+    const avgCPM = validMeasurements.length > 0 ? 
+        (validMeasurements.reduce((sum, m) => sum + m.cpm, 0) / validMeasurements.length).toFixed(2) : 'N/A';
+    const maxCPM = validMeasurements.length > 0 ? Math.max(...validMeasurements.map(m => m.cpm)) : 'N/A';
+    const minCPM = validMeasurements.length > 0 ? Math.min(...validMeasurements.map(m => m.cpm)) : 'N/A';
+
+    document.getElementById('measurementsSummary').innerHTML = `
+        <div class="row text-center">
+            <div class="col-md-3">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h5 class="card-title text-primary">${measurements.length}</h5>
+                        <p class="card-text">Total Points</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h5 class="card-title text-success">${avgCPM}</h5>
+                        <p class="card-text">Avg CPM</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h5 class="card-title text-warning">${maxCPM}</h5>
+                        <p class="card-text">Max CPM</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h5 class="card-title text-info">${minCPM}</h5>
+                        <p class="card-text">Min CPM</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function displayMeasurementsTable(measurements) {
+    if (!measurements || measurements.length === 0) {
+        document.getElementById('measurementsTable').innerHTML = `
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                No measurements found for this import.
+            </div>
+        `;
+        return;
+    }
+
+    let tableHTML = `
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Location</th>
+                        <th>CPM</th>
+                        <th>μSv/h</th>
+                        <th>Altitude</th>
+                        <th>Temperature</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    measurements.slice(0, 100).forEach(measurement => {
+        tableHTML += `
+            <tr>
+                <td>${measurement.captured_at ? new Date(measurement.captured_at).toLocaleString() : 'N/A'}</td>
+                <td>${measurement.latitude && measurement.longitude ? 
+                    `${measurement.latitude.toFixed(6)}, ${measurement.longitude.toFixed(6)}` : 'N/A'}</td>
+                <td>${measurement.cpm || 'N/A'}</td>
+                <td>${measurement.usv || 'N/A'}</td>
+                <td>${measurement.altitude || 'N/A'}</td>
+                <td>${measurement.temperature || 'N/A'}</td>
+            </tr>
+        `;
+    });
+
+    tableHTML += `
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    if (measurements.length > 100) {
+        tableHTML += `
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                Showing first 100 measurements of ${measurements.length} total.
+            </div>
+        `;
+    }
+
+    document.getElementById('measurementsTable').innerHTML = tableHTML;
+}
+
+function getStatusBadge(status) {
+    const badges = {
+        'unprocessed': '<span class="badge bg-secondary">Unprocessed</span>',
+        'processing': '<span class="badge bg-warning">Processing</span>',
+        'processed': '<span class="badge bg-success">Processed</span>',
+        'failed': '<span class="badge bg-danger">Failed</span>'
+    };
+    return badges[status] || '<span class="badge bg-secondary">Unknown</span>';
+}
+
+let map = null;
+let measurementMarkers = [];
+
+function initializeMap(measurements) {
+    if (!measurements || measurements.length === 0) {
+        document.getElementById('mapContainer').innerHTML = `
+            <div class="alert alert-info text-center mt-5">
+                <i class="fas fa-info-circle me-2"></i>
+                No measurement data available to display on map.
+            </div>
+        `;
+        return;
+    }
+
+    // Filter measurements with valid coordinates
+    const validMeasurements = measurements.filter(m => 
+        m.latitude && m.longitude && 
+        !isNaN(m.latitude) && !isNaN(m.longitude)
+    );
+
+    if (validMeasurements.length === 0) {
+        document.getElementById('mapContainer').innerHTML = `
+            <div class="alert alert-warning text-center mt-5">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                No valid GPS coordinates found in measurements.
+            </div>
+        `;
+        return;
+    }
+
+    // Initialize map
+    map = L.map('mapContainer').setView([validMeasurements[0].latitude, validMeasurements[0].longitude], 13);
+
+    // Add OpenStreetMap tiles
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Calculate bounds for all measurements
+    const bounds = L.latLngBounds();
+    
+    // Add markers for each measurement
+    validMeasurements.forEach((measurement, index) => {
+        const lat = measurement.latitude;
+        const lng = measurement.longitude;
+        const cpm = measurement.cpm || 0;
+        
+        bounds.extend([lat, lng]);
+        
+        // Color code based on radiation level (Safecast standard colors)
+        let color = '#00ff00'; // Bright green for very low (0-30 CPM)
+        if (cpm > 30) color = '#40ff00';   // Green-yellow (30-50 CPM)
+        if (cpm > 50) color = '#80ff00';   // Yellow-green (50-100 CPM)
+        if (cpm > 100) color = '#ffff00';  // Yellow (100-150 CPM)
+        if (cpm > 150) color = '#ff8000';  // Orange (150-300 CPM)
+        if (cpm > 300) color = '#ff4000';  // Red-orange (300-600 CPM)
+        if (cpm > 600) color = '#ff0000';  // Red (600-1000 CPM)
+        if (cpm > 1000) color = '#800080'; // Purple for very high (>1000 CPM)
+        
+        const marker = L.circleMarker([lat, lng], {
+            radius: Math.max(4, Math.min(12, cpm / 50)), // Size based on CPM
+            fillColor: color,
+            color: '#fff',
+            weight: 2,
+            opacity: 1,
+            fillOpacity: 0.8
+        });
+        
+        // Create popup content
+        const popupContent = `
+            <div class="measurement-popup">
+                <h6><i class="fas fa-radiation me-1"></i>Measurement #${index + 1}</h6>
+                <p><strong>CPM:</strong> ${cpm}</p>
+                <p><strong>μSv/h:</strong> ${measurement.usv || 'N/A'}</p>
+                <p><strong>Location:</strong> ${lat.toFixed(6)}, ${lng.toFixed(6)}</p>
+                <p><strong>Time:</strong> ${measurement.captured_at ? new Date(measurement.captured_at).toLocaleString() : 'N/A'}</p>
+                ${measurement.altitude ? `<p><strong>Altitude:</strong> ${measurement.altitude}m</p>` : ''}
+                ${measurement.temperature ? `<p><strong>Temperature:</strong> ${measurement.temperature}°C</p>` : ''}
+            </div>
+        `;
+        
+        marker.bindPopup(popupContent);
+        marker.addTo(map);
+        measurementMarkers.push(marker);
+    });
+    
+    // Fit map to show all measurements
+    if (bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [20, 20] });
+    }
+    
+    // Add legend
+    addMapLegend();
+}
+
+function addMapLegend() {
+    const legend = L.control({ position: 'bottomright' });
+    
+    legend.onAdd = function(map) {
+        const div = L.DomUtil.create('div', 'map-legend');
+        div.style.backgroundColor = 'white';
+        div.style.padding = '10px';
+        div.style.border = '2px solid rgba(0,0,0,0.2)';
+        div.style.borderRadius = '5px';
+        div.style.fontSize = '12px';
+        
+        div.innerHTML = `
+            <h6><i class="fas fa-info-circle me-1"></i>Radiation Levels (CPM)</h6>
+            <div><span style="color: #00ff00;">●</span> 0-30</div>
+            <div><span style="color: #40ff00;">●</span> 30-50</div>
+            <div><span style="color: #80ff00;">●</span> 50-100</div>
+            <div><span style="color: #ffff00;">●</span> 100-150</div>
+            <div><span style="color: #ff8000;">●</span> 150-300</div>
+            <div><span style="color: #ff4000;">●</span> 300-600</div>
+            <div><span style="color: #ff0000;">●</span> 600-1000</div>
+            <div><span style="color: #800080;">●</span> >1000</div>
+        `;
+        
+        return div;
+    };
+    
+    legend.addTo(map);
+}
+
+function toggleTableView() {
+    const table = document.getElementById('measurementsTable');
+    const toggleText = document.getElementById('tableToggleText');
+    
+    if (table.style.display === 'none') {
+        table.style.display = 'block';
+        toggleText.textContent = 'Hide Table';
+    } else {
+        table.style.display = 'none';
+        toggleText.textContent = 'Show Table';
+    }
+}
+
+function downloadKML() {
+    window.location.href = `/api/v1/bgeigie_imports/${importId}/kml`;
+}
+
+// Load raw log data
+async function loadRawLogData() {
+    try {
+        const response = await fetch(`/api/v1/bgeigie_imports/${importId}`);
+        if (!response.ok) {
+            throw new Error('Failed to load import details');
+        }
+        
+        const importData = await response.json();
+        
+        // For now, show a placeholder since we don't have raw log endpoint
+        document.getElementById('rawLogData').innerHTML = `
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                Raw log data display is not yet implemented. 
+                File location: ${importData.source || 'N/A'}
+            </div>
+        `;
+        
+    } catch (error) {
+        console.error('Error loading raw log data:', error);
+        document.getElementById('rawLogData').innerHTML = `
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Failed to load raw log data.
+            </div>
+        `;
+    }
+}
+
+// Initialize page
+document.addEventListener('DOMContentLoaded', function() {
+    loadImportDetails();
+    loadMeasurements();
+    loadRawLogData();
+});
+</script>
+
+<!-- Leaflet JavaScript -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% endblock %}

@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+
+{% block title %}Users - Safecast API{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1>Users</h1>
+        <p class="text-muted">Manage user accounts and permissions in the Safecast network.</p>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-6">
+        <div class="input-group">
+            <span class="input-group-text"><i class="fas fa-search"></i></span>
+            <input type="text" class="form-control" placeholder="Search users..." id="searchInput">
+        </div>
+    </div>
+    <div class="col-md-3">
+        <select class="form-select" id="roleFilter">
+            <option value="">All Roles</option>
+            <option value="admin">Admin</option>
+            <option value="moderator">Moderator</option>
+            <option value="user">User</option>
+        </select>
+    </div>
+    <div class="col-md-3">
+        <select class="form-select" id="statusFilter">
+            <option value="">All Status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="pending">Pending</option>
+        </select>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Measurements</th>
+                        <th>Joined</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="usersTableBody">
+                    <tr>
+                        <td colspan="7" class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2 text-muted">Loading users...</p>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadUsers() {
+    try {
+        const params = new URLSearchParams();
+        
+        const search = document.getElementById('searchInput').value;
+        const role = document.getElementById('roleFilter').value;
+        const status = document.getElementById('statusFilter').value;
+        
+        if (search) params.append('search', search);
+        if (role) params.append('role', role);
+        if (status) params.append('status', status);
+        
+        const response = await fetch(`/api/v1/users/?${params}`);
+        const data = await response.json();
+        
+        displayUsers(data.items || []);
+        
+    } catch (error) {
+        console.error('Error loading users:', error);
+        displayError('Failed to load users. Please try again.');
+    }
+}
+
+function displayUsers(users) {
+    const tbody = document.getElementById('usersTableBody');
+    
+    if (users.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center text-muted">
+                    <i class="fas fa-users fa-2x mb-3"></i>
+                    <p>No users found</p>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = users.map(user => `
+        <tr>
+            <td><strong>#${user.id}</strong></td>
+            <td>${user.name || 'Unknown'}</td>
+            <td>${user.email}</td>
+            <td>
+                <span class="badge bg-${getRoleBadgeColor(user.moderator)}">
+                    ${user.moderator ? 'Moderator' : 'User'}
+                </span>
+            </td>
+            <td>
+                <span class="badge bg-info">
+                    ${user.measurements_count || 0}
+                </span>
+            </td>
+            <td>
+                <small>${formatDate(user.created_at)}</small>
+            </td>
+            <td>
+                <span class="badge bg-${user.confirmed_at ? 'success' : 'warning'}">
+                    ${user.confirmed_at ? 'Active' : 'Pending'}
+                </span>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function getRoleBadgeColor(isModerator) {
+    return isModerator ? 'primary' : 'secondary';
+}
+
+function formatDate(dateString) {
+    if (!dateString) return '-';
+    return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+    });
+}
+
+function displayError(message) {
+    const tbody = document.getElementById('usersTableBody');
+    tbody.innerHTML = `
+        <tr>
+            <td colspan="7" class="text-center text-danger">
+                <i class="fas fa-exclamation-triangle fa-2x mb-3"></i>
+                <p>${message}</p>
+            </td>
+        </tr>
+    `;
+}
+
+// Event listeners
+document.getElementById('searchInput').addEventListener('input', debounce(loadUsers, 500));
+document.getElementById('roleFilter').addEventListener('change', loadUsers);
+document.getElementById('statusFilter').addEventListener('change', loadUsers);
+
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// Load initial data
+document.addEventListener('DOMContentLoaded', () => {
+    loadUsers();
+});
+</script>
+{% endblock %}

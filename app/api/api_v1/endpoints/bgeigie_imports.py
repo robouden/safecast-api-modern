@@ -10,21 +10,12 @@ from pathlib import Path
 
 from app.core.database import get_db
 from app.core.config import settings
-from app.models.bgeigie_import import BgeigieImport, ImportStatus
+from app.models.bgeigie_import import BgeigieImport, ImportStatus, BgeigieImportStatus
 from app.models.bgeigie_log import BgeigieLog
 from app.models.user import User
-from app.schemas.bgeigie_import import (
-    BgeigieImportResponse,
-    BgeigieImportCreate,
-    BgeigieImportUpdate,
-    BgeigieImportList,
-    BgeigieImportWithLogs,
-    BgeigieImportQuery,
-    BgeigieImportStats,
-    FileUploadResponse
-)
-from app.api.deps import get_current_user, get_current_moderator
-from app.models.bgeigie_import import BgeigieImportStatus
+from app.schemas.bgeigie_import import BgeigieImportResponse, BgeigieImportWithLogs, BgeigieImportQuery, BgeigieImportList, BgeigieImportStats, BgeigieImportUpdate
+from app.schemas.measurement import MeasurementResponse, Measurement
+from app.api.deps import get_db, get_current_user, get_current_user_optional, get_current_moderator
 from app.services.bgeigie_processor import BgeigieProcessor
 from app.services.kml_exporter import KMLExporter
 
@@ -191,6 +182,46 @@ async def export_bgeigie_import_kml(
     )
 
 
+@router.get("/{import_id}/measurements")
+async def get_bgeigie_import_measurements(
+    import_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get measurements for a specific BGeigie import"""
+    from app.models.bgeigie_log import BgeigieLog
+    
+    # Get the import to verify it exists
+    import_query = select(BgeigieImport).where(BgeigieImport.id == import_id)
+    import_result = await db.execute(import_query)
+    bgeigie_import = import_result.scalar_one_or_none()
+    
+    if not bgeigie_import:
+        raise HTTPException(status_code=404, detail="BGeigie import not found")
+    
+    # Get measurements/logs for this import
+    query = select(BgeigieLog).where(BgeigieLog.bgeigie_import_id == import_id)
+    result = await db.execute(query)
+    logs = result.scalars().all()
+    
+    # Convert to dict format for JSON response
+    measurements = []
+    for log in logs:
+        measurements.append({
+            "id": log.id,
+            "latitude": log.latitude,
+            "longitude": log.longitude,
+            "cpm": log.cpm,
+            "usv": log.usv,
+            "captured_at": log.captured_at.isoformat() if log.captured_at else None,
+            "device_tag": log.device_tag,
+            "device_serial_id": log.device_serial_id,
+            "altitude": log.altitude,
+            "gps_validity": log.gps_validity
+        })
+    
+    return measurements
+
+
 @router.get("/{import_id}/kmz")
 async def export_bgeigie_import_kmz(
     import_id: int,
@@ -251,21 +282,26 @@ async def get_bgeigie_import(
     return response_data
 
 
-@router.post("/upload", response_model=BgeigieImportResponse, status_code=201)
-async def upload_bgeigie_file(
+@router.post("/", response_model=BgeigieImportResponse, status_code=201)
+async def create_bgeigie_import(
     file: UploadFile = File(...),
     name: str = Form(...),
     description: Optional[str] = Form(None),
-    current_user: User = Depends(get_current_user),
+    cities: Optional[str] = Form(None),
+    credits: Optional[str] = Form(None),
+    height: Optional[str] = Form(None),
+    orientation: Optional[str] = Form(None),
+    subtype: Optional[str] = Form("None"),
+    auto_approve: Optional[bool] = Form(False),
     db: AsyncSession = Depends(get_db)
 ):
     """Upload a BGeigie log file for processing"""
     
     # Validate file type
-    if not file.filename.endswith(('.log', '.txt')):
+    if not file.filename.endswith(('.log', '.txt', '.csv')):
         raise HTTPException(
             status_code=400,
-            detail="Only .log and .txt files are supported"
+            detail="Only .log, .txt, and .csv files are supported"
         )
     
     # Check file size
@@ -279,8 +315,10 @@ async def upload_bgeigie_file(
     upload_dir = Path(settings.UPLOAD_DIR) / "bgeigie_imports"
     upload_dir.mkdir(parents=True, exist_ok=True)
     
-    # Generate unique filename
-    file_path = upload_dir / f"{current_user.id}_{file.filename}"
+    # Generate unique filename (use default user ID for now)
+    import time
+    timestamp = int(time.time())
+    file_path = upload_dir / f"{timestamp}_{file.filename}"
     
     # Save file
     try:
@@ -294,8 +332,14 @@ async def upload_bgeigie_file(
     bgeigie_import = BgeigieImport(
         name=name,
         description=description,
+        cities=cities,
+        credits=credits,
+        height=height,
+        orientation=orientation,
+        subtype=subtype,
+        auto_apprv=auto_approve,
         source=str(file_path),
-        user_id=current_user.id,
+        user_id=1,  # Default user ID for now
         status=ImportStatus.UNPROCESSED
     )
     
@@ -308,6 +352,7 @@ async def upload_bgeigie_file(
         processor = BgeigieProcessor(db)
         file_content = content.decode('utf-8')
         await processor.process_file(bgeigie_import, file_content)
+        await db.refresh(bgeigie_import)  # Refresh to get updated status
     except Exception as e:
         # If processing fails, mark import as failed but don't delete it
         bgeigie_import.status = ImportStatus.UNPROCESSED

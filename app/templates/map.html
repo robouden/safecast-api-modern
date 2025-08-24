@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Safecast Radiation Data Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1rem;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 2rem;
+            font-weight: 300;
+        }
+        
+        .controls {
+            background: white;
+            padding: 1rem;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .control-group label {
+            font-weight: 500;
+            color: #333;
+        }
+        
+        select, input {
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+        
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background 0.3s;
+        }
+        
+        button:hover {
+            background: #5a6fd8;
+        }
+        
+        #map {
+            height: calc(100vh - 140px);
+            width: 100%;
+        }
+        
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+            min-width: 200px;
+        }
+        
+        .legend h4 {
+            margin: 0 0 0.5rem 0;
+            color: #333;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 0.25rem 0;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            margin-right: 0.5rem;
+            border-radius: 50%;
+        }
+        
+        .info-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+            max-width: 300px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🌍 Safecast Radiation Data Map</h1>
+    </div>
+    
+    <div class="controls">
+        <div class="control-group">
+            <label for="importSelect">Import:</label>
+            <select id="importSelect">
+                <option value="">Select an import...</option>
+            </select>
+        </div>
+        
+        <div class="control-group">
+            <label for="dateRange">Date Range:</label>
+            <input type="date" id="startDate">
+            <span>to</span>
+            <input type="date" id="endDate">
+        </div>
+        
+        <button onclick="loadData()">Load Data</button>
+        <button onclick="clearMap()">Clear Map</button>
+    </div>
+    
+    <div id="map"></div>
+    
+    <div class="legend">
+        <h4>Radiation Levels (µSv/h)</h4>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #00ff00;"></div>
+            <span>0.0 - 0.1 (Normal)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #ffff00;"></div>
+            <span>0.1 - 0.5 (Elevated)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #ff8000;"></div>
+            <span>0.5 - 1.0 (High)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #ff0000;"></div>
+            <span>1.0+ (Very High)</span>
+        </div>
+    </div>
+    
+    <div class="info-panel" id="infoPanel" style="display: none;">
+        <h4>Measurement Details</h4>
+        <div id="measurementInfo"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Initialize map with OpenStreetMap
+        const map = L.map('map').setView([35.6762, 139.6503], 6); // Centered on Japan
+        
+        // Add OpenStreetMap tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | Radiation data by <a href="https://safecast.org">Safecast</a>',
+            maxZoom: 18
+        }).addTo(map);
+        
+        let currentMarkers = [];
+        let currentHeatmapLayer = null;
+        
+        // Color coding for radiation levels
+        function getRadiationColor(usv) {
+            if (usv < 0.1) return '#00ff00'; // Green - Normal
+            if (usv < 0.5) return '#ffff00'; // Yellow - Elevated
+            if (usv < 1.0) return '#ff8000'; // Orange - High
+            return '#ff0000'; // Red - Very High
+        }
+        
+        // Load available imports
+        async function loadImports() {
+            try {
+                const response = await fetch('/api/v1/bgeigie_imports/');
+                const data = await response.json();
+                
+                const select = document.getElementById('importSelect');
+                select.innerHTML = '<option value="">Select an import...</option>';
+                
+                data.items.forEach(item => {
+                    const option = document.createElement('option');
+                    option.value = item.id;
+                    option.textContent = `${item.name || 'Import #' + item.id} (${item.status})`;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading imports:', error);
+            }
+        }
+        
+        // Load measurement data
+        async function loadData() {
+            const importId = document.getElementById('importSelect').value;
+            if (!importId) {
+                alert('Please select an import first');
+                return;
+            }
+            
+            clearMap();
+            
+            try {
+                // Show loading
+                const loading = document.createElement('div');
+                loading.className = 'loading';
+                loading.innerHTML = '<p>Loading radiation data...</p>';
+                document.body.appendChild(loading);
+                
+                const response = await fetch(`/api/v1/bgeigie_imports/${importId}/measurements`);
+                const measurements = await response.json();
+                
+                document.body.removeChild(loading);
+                
+                if (measurements.length === 0) {
+                    alert('No measurement data found for this import');
+                    return;
+                }
+                
+                // Add markers to map
+                measurements.forEach(measurement => {
+                    if (measurement.latitude && measurement.longitude) {
+                        const usv = measurement.usv || (measurement.cpm / 330); // Convert CPM to µSv/h
+                        const color = getRadiationColor(usv);
+                        
+                        const marker = L.circleMarker([measurement.latitude, measurement.longitude], {
+                            radius: 6,
+                            fillColor: color,
+                            color: '#000',
+                            weight: 1,
+                            opacity: 1,
+                            fillOpacity: 0.8
+                        });
+                        
+                        // Add popup with measurement details
+                        marker.bindPopup(`
+                            <strong>Radiation Level</strong><br>
+                            CPM: ${measurement.cpm || 'N/A'}<br>
+                            µSv/h: ${usv.toFixed(3)}<br>
+                            Location: ${measurement.latitude.toFixed(6)}, ${measurement.longitude.toFixed(6)}<br>
+                            ${measurement.captured_at ? 'Time: ' + new Date(measurement.captured_at).toLocaleString() : ''}
+                        `);
+                        
+                        marker.addTo(map);
+                        currentMarkers.push(marker);
+                    }
+                });
+                
+                // Fit map to show all markers
+                if (currentMarkers.length > 0) {
+                    const group = new L.featureGroup(currentMarkers);
+                    map.fitBounds(group.getBounds().pad(0.1));
+                }
+                
+                console.log(`Loaded ${currentMarkers.length} measurements`);
+                
+            } catch (error) {
+                console.error('Error loading measurement data:', error);
+                alert('Error loading measurement data. Please try again.');
+            }
+        }
+        
+        // Clear all markers from map
+        function clearMap() {
+            currentMarkers.forEach(marker => {
+                map.removeLayer(marker);
+            });
+            currentMarkers = [];
+            
+            if (currentHeatmapLayer) {
+                map.removeLayer(currentHeatmapLayer);
+                currentHeatmapLayer = null;
+            }
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            loadImports();
+            
+            // Set default date range (last 30 days)
+            const endDate = new Date();
+            const startDate = new Date();
+            startDate.setDate(startDate.getDate() - 30);
+            
+            document.getElementById('endDate').value = endDate.toISOString().split('T')[0];
+            document.getElementById('startDate').value = startDate.toISOString().split('T')[0];
+        });
+    </script>
+</body>
+</html>

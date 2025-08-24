@@ -110,11 +110,10 @@ async def get_measurements(
     measurements = result.scalars().all()
     
     return MeasurementList(
-        items=[MeasurementSchema.from_orm(m) for m in measurements],
+        measurements=[MeasurementSchema.model_validate(m) for m in measurements],
         total=total,
         page=page,
-        per_page=per_page,
-        pages=math.ceil(total / per_page)
+        per_page=per_page
     )
 
 
@@ -136,7 +135,7 @@ async def get_measurement(
     if not measurement:
         raise HTTPException(status_code=404, detail="Measurement not found")
     
-    return MeasurementSchema.from_orm(measurement)
+    return MeasurementSchema.model_validate(measurement)
 
 
 @router.post("/", response_model=MeasurementSchema)
@@ -184,7 +183,7 @@ async def create_measurement(
     # Load relationships
     await db.refresh(measurement, ["device", "user"])
     
-    return MeasurementSchema.from_orm(measurement)
+    return MeasurementSchema.model_validate(measurement)
 
 
 @router.put("/{measurement_id}", response_model=MeasurementSchema)
@@ -226,7 +225,7 @@ async def update_measurement(
     await db.commit()
     await db.refresh(measurement)
     
-    return MeasurementSchema.from_orm(measurement)
+    return MeasurementSchema.model_validate(measurement)
 
 
 @router.delete("/{measurement_id}")

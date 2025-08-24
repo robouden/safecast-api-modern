@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+
+{% block title %}Measurements - Safecast API{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1>Measurements</h1>
+        <p class="text-muted">Browse and search radiation measurements from the Safecast network.</p>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-4">
+        <div class="input-group">
+            <span class="input-group-text"><i class="fas fa-search"></i></span>
+            <input type="text" class="form-control" placeholder="Search by location..." id="searchInput">
+        </div>
+    </div>
+    <div class="col-md-2">
+        <input type="date" class="form-control" id="startDate" title="Start Date">
+    </div>
+    <div class="col-md-2">
+        <input type="date" class="form-control" id="endDate" title="End Date">
+    </div>
+    <div class="col-md-2">
+        <select class="form-select" id="unitFilter">
+            <option value="">All Units</option>
+            <option value="cpm">CPM</option>
+            <option value="usv">µSv/h</option>
+        </select>
+    </div>
+    <div class="col-md-2">
+        <button class="btn btn-safecast w-100" onclick="loadMeasurements()">
+            <i class="fas fa-filter me-2"></i>Filter
+        </button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Location</th>
+                        <th>Value</th>
+                        <th>Unit</th>
+                        <th>Device</th>
+                        <th>Captured</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="measurementsTableBody">
+                    <tr>
+                        <td colspan="7" class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2 text-muted">Loading measurements...</p>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<nav aria-label="Page navigation" class="mt-4">
+    <ul class="pagination justify-content-center" id="pagination">
+    </ul>
+</nav>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadMeasurements(page = 1) {
+    try {
+        const params = new URLSearchParams({
+            page: page,
+            limit: 50
+        });
+        
+        const search = document.getElementById('searchInput').value;
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
+        const unit = document.getElementById('unitFilter').value;
+        
+        if (search) params.append('search', search);
+        if (startDate) params.append('start_date', startDate);
+        if (endDate) params.append('end_date', endDate);
+        if (unit) params.append('unit', unit);
+        
+        const response = await fetch(`/api/v1/measurements/?${params}`);
+        const data = await response.json();
+        
+        displayMeasurements(data.items || []);
+        
+    } catch (error) {
+        console.error('Error loading measurements:', error);
+        displayError('Failed to load measurements. Please try again.');
+    }
+}
+
+function displayMeasurements(measurements) {
+    const tbody = document.getElementById('measurementsTableBody');
+    
+    if (measurements.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center text-muted">
+                    <i class="fas fa-inbox fa-2x mb-3"></i>
+                    <p>No measurements found</p>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = measurements.map(measurement => `
+        <tr>
+            <td><strong>#${measurement.id}</strong></td>
+            <td>
+                ${measurement.latitude && measurement.longitude ? 
+                    `${measurement.latitude.toFixed(4)}, ${measurement.longitude.toFixed(4)}` : 
+                    'Unknown'}
+            </td>
+            <td>
+                <span class="badge bg-${getRadiationBadgeColor(measurement.value)}">
+                    ${measurement.value ? measurement.value.toFixed(3) : 'N/A'}
+                </span>
+            </td>
+            <td>${measurement.unit || 'CPM'}</td>
+            <td>${measurement.device_id || 'Unknown'}</td>
+            <td>
+                <small>${formatDate(measurement.captured_at)}</small>
+            </td>
+            <td>
+                <button class="btn btn-outline-primary btn-sm" onclick="viewDetails(${measurement.id})" title="View Details">
+                    <i class="fas fa-eye"></i>
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function getRadiationBadgeColor(value) {
+    if (!value) return 'secondary';
+    if (value < 0.1) return 'success';
+    if (value < 0.5) return 'warning';
+    if (value < 1.0) return 'danger';
+    return 'dark';
+}
+
+function formatDate(dateString) {
+    if (!dateString) return '-';
+    return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function displayError(message) {
+    const tbody = document.getElementById('measurementsTableBody');
+    tbody.innerHTML = `
+        <tr>
+            <td colspan="7" class="text-center text-danger">
+                <i class="fas fa-exclamation-triangle fa-2x mb-3"></i>
+                <p>${message}</p>
+            </td>
+        </tr>
+    `;
+}
+
+function viewDetails(measurementId) {
+    // Open measurement details in modal or new page
+    alert(`View details for measurement #${measurementId}`);
+}
+
+// Load initial data
+document.addEventListener('DOMContentLoaded', () => {
+    loadMeasurements();
+    
+    // Set default date range (last 7 days)
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 7);
+    
+    document.getElementById('endDate').value = endDate.toISOString().split('T')[0];
+    document.getElementById('startDate').value = startDate.toISOString().split('T')[0];
+});
+</script>
+{% endblock %}
