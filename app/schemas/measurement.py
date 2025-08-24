@@ -104,3 +104,7 @@ class MeasurementQuery(BaseModel):
 
 class MeasurementCount(BaseModel):
     count: int = Field(..., description="Total number of measurements")
+
+
+# Alias for compatibility
+Measurement = MeasurementResponse

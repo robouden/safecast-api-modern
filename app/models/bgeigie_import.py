@@ -15,6 +15,10 @@ class ImportStatus(str, enum.Enum):
     REJECTED = "rejected"
 
 
+# Alias for compatibility
+BgeigieImportStatus = ImportStatus
+
+
 class MeasurementImport(Base):
     __tablename__ = "measurement_imports"
 
@@ -47,7 +51,6 @@ class MeasurementImport(Base):
     # Relationships
     user = relationship("User", back_populates="bgeigie_imports")
     measurements = relationship("Measurement", back_populates="measurement_import")
-    bgeigie_logs = relationship("BgeigieLog", back_populates="bgeigie_import", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<MeasurementImport(id={self.id}, name='{self.name}', status='{self.status}')>"
@@ -77,6 +80,9 @@ class BgeigieImport(MeasurementImport):
     
     # File processing status
     status_details = Column(Text)  # JSON field for detailed status
+    
+    # Relationships
+    bgeigie_logs = relationship("BgeigieLog", back_populates="bgeigie_import", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<BgeigieImport(id={self.id}, cities='{self.cities}', status='{self.status}')>"
